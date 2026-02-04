@@ -1,0 +1,45 @@
+┌─────────────────────────────────────────────────┐
+│ 1. PREPROCESSING                                │
+│    • Bandpass 20-450 Hz (4th order Butterworth) │
+│    • Notch 50, 100, 150, 200 Hz                 │
+│    • Motion artifact removal (RMS + derivative) │
+└─────────────────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────┐
+│ 2. SPEECH ACTIVITY DETECTION                    │
+│    • Two-stage (local → global)                 │
+│    • 40ms window, 20ms overlap                  │
+│    • Multi-channel fusion                       │
+│    OUTPUT: 'speech' vs 'rest' segment labels    │
+└─────────────────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────┐
+│ 3. SNR CALCULATION (ELECTRODE COMPARISON)       │
+│    • Per channel: SNR = 10×log₁₀(P_s/P_n)       │
+│    • Report: mean ± std across channels         │
+│    • Compare across electrode types             │
+└─────────────────────────────────────────────────┘
+                      ↓
+          ┌───────────┴───────────┐
+          ↓                       ↓
+┌──────────────────────┐  ┌──────────────────────┐
+│ 4A. STATISTICAL      │  │ 4B. CNN PIPELINE     │
+│     ANALYSIS PATH    │  │                      │
+│                      │  │                      │
+│ • Extract features:  │  │ • Z-score normalize  │
+│   - RMS, MAV, VAR    │  │                      │
+│   - WL, SD           │  │ • Generate inputs:   │
+│                      │  │   Option 1: 1D signal│
+│ • Compare electrodes:│  │   Option 2: Mel-spec │
+│   - ANOVA/t-tests    │  │                      │
+│   - Effect sizes     │  │ • Train CNN          │
+│   - Plots/tables     │  │                      │
+│                      │  │ • Evaluate:          │
+│ PURPOSE: Show which  │  │   - Accuracy         │
+│ electrode is better  │  │   - ROC/AUC          │
+│ (signal quality)     │  │   - Confusion matrix │
+│                      │  │                      │
+│                      │  │ PURPOSE: Decode      │
+│                      │  │ speech (per electrode│
+│                      │  │ to show usability)   │
+└──────────────────────┘  └──────────────────────┘
