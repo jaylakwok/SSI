@@ -34,15 +34,14 @@ class EMGPreprocessor2:
 
         raw = np.asarray(raw_signal).squeeze().astype(float)
         
-        print(F"raw: {np.shape(raw)}")
+        
         signal = self.remove_dc(raw)
-        print(F"signal_dc: {np.shape(signal)}")
+        
         signal = self.notch(signal)
-        print(F"signal_notch: {np.shape(signal)}")
+        
         filtered = self.bandpass(signal)
         time = np.arange(len(raw)) / self.fs 
-        print(F"Filtered array Shape: {np.shape(filtered)}")
-        print (type(filtered))
+        
 
         return {
             'raw': raw,
