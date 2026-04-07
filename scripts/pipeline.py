@@ -24,8 +24,8 @@ def process_all_files_batch(save_plots=True, save_data=True):
     successful = 0
     failed = 0
     
-    # target length needs updating but should be roughly same. now 2400 ms per segment so N = fx x T means N = 2000 x 2.4 = 4800 ms
-    target_len = 4800  
+    # target length needs updating but should be roughly same. now 1500 ms per segment so N = fx x T means N = 2000 x 1.5 = 3000 ms
+    target_len = 3000 
 
     REFERENCE_SEGMENTS = None
     
@@ -127,7 +127,7 @@ def process_all_files_batch(save_plots=True, save_data=True):
                     
                     snippet = clean_signal[onset:offset]
                     
-                    # Pad to 4800 ms
+                    # Pad to 1 ms
                     if len(snippet) >= target_len:
                         snippet = snippet[:target_len]
                     else:

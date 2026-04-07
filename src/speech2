@@ -1,4 +1,3 @@
-from math import sqrt
 import numpy as np
 from scipy.signal import butter, filtfilt, iirnotch, find_peaks
 import config 
@@ -103,31 +102,46 @@ class SpeechActivityDetector:
         # get baseline
         baseline_value = self._get_baseline_value(env)
         
-        min_peak_distance_ms = getattr(config, 'MIN_PEAK_DISTANCE', 1500)
+        min_peak_distance_ms = getattr(config, 'MIN_PEAK_DISTANCE', 5000)
         min_peak_distance_frames = max(1, int(min_peak_distance_ms / config.HOP))
         min_prominence = getattr(config, 'MIN_PEAK_PROMINENCE', 2.0)
 
-        # part 1: finding candidate peaks by using baseline value 25th percentile
+        # ==========================================
+        # 1. FIND CANDIDATE PEAKS (Pass 1)
+        # Use a very relaxed baseline to filter out raw static, 
+        # but catch all potential real peaks.
+        # ==========================================
         candidate_peaks, _ = find_peaks(
             env, 
-            height=baseline_value * 1.2,       
+            height=baseline_value * 1.2,       # Just slightly above the noise floor
             distance=min_peak_distance_frames, 
-            prominence=baseline_value * 0.5,   
+            prominence=baseline_value * 0.5,   # Relaxed prominence
             width=3
         )
 
         if len(candidate_peaks) == 0:
-            print('No candidate peaks found')
+            print('No candidate peaks found. Returning empty.')
             return [], baseline_value
 
-        # use min peak ampitued and apply global threshold of -3dB on it
+        # ==========================================
+        # 2. APPLY YOUR 70% RULE
+        # Find the minimum valid peak and set threshold
+        # ==========================================
         candidate_peak_values = env[candidate_peaks]
         min_candidate_peak = np.min(candidate_peak_values)
-        current_threshold = (1.0/np.sqrt(2.0)) * min_candidate_peak
         
-        print(f'Adaptive Threshold set to {current_threshold:.4f} (0.707 of min peak: {min_candidate_peak:.4f})')
+        # Calculate 70% of the minimum candidate peak
+        current_threshold = 0.70 * min_candidate_peak
+        
+        # Safety net: Ensure the threshold doesn't dip below our absolute baseline
+        current_threshold = max(current_threshold, baseline_value * 1.1)
 
-        # final peak re detection using new global threshold
+        print(f'Adaptive Threshold set to {current_threshold:.4f} (70% of min peak: {min_candidate_peak:.4f})')
+
+        # ==========================================
+        # 3. FINAL PEAK FILTERING (Pass 2)
+        # Now use your calculated threshold
+        # ==========================================
         peaks, properties = find_peaks(
             env, 
             height=current_threshold,
@@ -137,12 +151,13 @@ class SpeechActivityDetector:
         )
         
         if len(peaks) == 0:
-            print('No peaks met the criteria')
+            print('No peaks met the 70% threshold criteria')
             return [], current_threshold
             
+        print(f'Found {len(peaks)} peaks with distance>={min_peak_distance_ms}ms, prominence>={min_prominence}x baseline')
         print(f'Peak locations (frames): {peaks}')
 
-        # applying strict criteria for speech detection - min distance (1)
+        # ============ MINIMUM DISTANCE FILTERING ============
         if len(peaks) > 1:
             filtered_peaks_by_dist = [peaks[0]]  
             
@@ -156,6 +171,29 @@ class SpeechActivityDetector:
             peaks = np.array(filtered_peaks_by_dist)
             print(f"  After min-distance filtering: {len(peaks)} peaks remaining")
         
+        # ============ VALLEY FILTERING ============
+        if len(peaks) > 1:
+            filtered_peaks = [peaks[0]]
+            
+            for i in range(1, len(peaks)):
+                current_peak = peaks[i]
+                prev_peak = filtered_peaks[-1]
+                
+                valley_idx = prev_peak + np.argmin(env[prev_peak:current_peak])
+                valley_depth = min(env[prev_peak], env[current_peak]) - env[valley_idx]
+                
+                valley_threshold = 2 * baseline_value 
+                
+                if valley_depth > valley_threshold:
+                    filtered_peaks.append(current_peak)
+                else:
+                    if env[current_peak] > env[prev_peak]:
+                        filtered_peaks[-1] = current_peak
+            
+            peaks = np.array(filtered_peaks)
+            print(f"  After valley filtering: {len(peaks)} peaks")
+        
+        # ============ SEGMENTATION ============
         segment_before_peak_ms = getattr(config, 'SEGMENT_BEFORE_PEAK', 750)  
         segment_after_peak_ms = getattr(config, 'SEGMENT_AFTER_PEAK', 750)    
         
@@ -296,7 +334,7 @@ class SpeechActivityDetector:
         # plot 2a: raw emg 
         axes[0].plot(time, signal, color='#333333', lw=0.5)
         axes[0].set_ylabel("Amplitude")
-        axes[0].set_title(f"sEMG ", fontweight='bold')
+        axes[0].set_title(f"A) sEMG ", fontweight='bold')
         for i, (on, off) in enumerate(segments):
             if on < len(time):
                 color = palette[i % len(palette)]
@@ -305,7 +343,7 @@ class SpeechActivityDetector:
         # plot 2b:  filtered sEMG
         axes[1].plot(time, results['clean_signal'], color='#444444', lw = 0.5)
         axes[1].set_ylabel("Amplitude")
-        axes[1].set_title("Filtered sEMG", fontweight = 'bold')
+        axes[1].set_title("B) Filtered sEMG", fontweight = 'bold')
         for i, (on, off) in enumerate(segments):
             color = palette[i % len(palette)]
             axes[1].axvspan(time[on], time[min(off, len(time)-1)], facecolor=color, alpha=0.4, edgecolor='black', linewidth=1)
@@ -313,7 +351,7 @@ class SpeechActivityDetector:
         # plot 2c: rms
         axes[2].plot(env_time, results['rms_envelope_r'], color='#2166ac', lw=1)
         axes[2].set_ylabel('Amplitude')
-        axes[2].set_title('Raw sEMG RMS', fontweight='bold')
+        axes[2].set_title('C) Raw sEMG RMS', fontweight='bold')
         for i, (on, off) in enumerate(segments):
             color = palette[i % len(palette)]
             axes[2].axvspan(time[on], time[min(off, len(time)-1)], facecolor=color, alpha=0.4, edgecolor='black', linewidth=1)
@@ -321,7 +359,7 @@ class SpeechActivityDetector:
         # plot 2d: smooth envelope with PEAKS marked -> filtered with 10 HP
         axes[3].plot(env_time, results['smooth_envelope'], color='#4dac26', lw=1.5)
         axes[3].set_ylabel('Amplitude')
-        axes[3].set_title('Smoothed filtered RMS', fontweight='bold')
+        axes[3].set_title('D) Smoothed filtered RMS', fontweight='bold')
         
         # detecetd peaks as red circle
         if 'peaks' in results and len(results['peaks']) > 0:
@@ -344,7 +382,7 @@ class SpeechActivityDetector:
         axes[4].plot(deriv_time, results['derivative'], color='#b2182b', lw=1)
         axes[4].set_ylabel('Amplitude')
         axes[4].set_xlabel('Time (s)')
-        axes[4].set_title('Rectified derivative of RMS', fontweight='bold')
+        axes[4].set_title('E) Rectified Derivative of RMS', fontweight='bold')
         for i, (on, off) in enumerate(segments):
             color = palette[i % len(palette)]
             axes[4].axvspan(time[on], time[min(off, len(time)-1)], facecolor=color, alpha=0.4, edgecolor='black', linewidth=1)

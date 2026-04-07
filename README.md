@@ -11,6 +11,7 @@
 - 40ms window, 20ms overlap                  
 - Multi-channel fusion in paper, but we have single channel so neglect
 - uses adaptive thresholding mu + k*std where k is ~ 3 but can be tuned. online forums say visual inspection asw
+- new method: is to use time aligned from 1 ch an d apply to all 8 to mKE CONSISITENT
 
                ↓                        ↓
 

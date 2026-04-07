@@ -60,7 +60,7 @@ class EMGPreprocessor2:
         # remove shifted problem
         raw_centered = raw - np.mean(raw)
 
-        fig, axes = plt.subplots(2, 1, figsize=(16, 10))
+        fig, axes = plt.subplots(2, 1, figsize=(14, 7))
 
         axes[0].plot(time, raw_centered, 'b-', linewidth=0.5, alpha=0.5, label='Raw (Centered)')
         axes[0].plot(time, filtered, 'r-', linewidth=0.5, alpha=0.7, label='Filtered')
